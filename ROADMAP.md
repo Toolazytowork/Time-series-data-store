@@ -1,7 +1,7 @@
 # TSDB 15-Day Implementation Roadmap
 
 ## Phase 1: Skeleton & Build System
-- [ ] Day 1: Output the `CMakeLists.txt`, configure GTest, and create core headers (`DataPoint.h`, `TimeSeries.h`, `TSDB.h`). Outline data structures and alignment.
+- [x] Day 1: Output the `CMakeLists.txt`, configure GTest, and create core headers (`DataPoint.h`, `TimeSeries.h`, `TSDB.h`). Outline data structures and alignment.
 - [ ] Day 2: Implement basic memory layout (cache-aligned DataPoint) and the un-sharded `TSDB` class mapping metric names to vectors. Write basic tests.
 
 ## Phase 2: Core Storage, Concurrency & Indexing
