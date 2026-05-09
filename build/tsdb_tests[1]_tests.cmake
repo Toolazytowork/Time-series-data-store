@@ -1,7 +1,0 @@
-add_test([=[DataPointTest.SizeAndAlignment]=]  /home/shivansh/Desktop/Time-series-data-store/build/tsdb_tests [==[--gtest_filter=DataPointTest.SizeAndAlignment]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[DataPointTest.SizeAndAlignment]=]  PROPERTIES WORKING_DIRECTORY /home/shivansh/Desktop/Time-series-data-store/build SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
-add_test([=[TimeSeriesTest.BasicInstantiation]=]  /home/shivansh/Desktop/Time-series-data-store/build/tsdb_tests [==[--gtest_filter=TimeSeriesTest.BasicInstantiation]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[TimeSeriesTest.BasicInstantiation]=]  PROPERTIES WORKING_DIRECTORY /home/shivansh/Desktop/Time-series-data-store/build SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
-add_test([=[TSDBTest.BasicInstantiation]=]  /home/shivansh/Desktop/Time-series-data-store/build/tsdb_tests [==[--gtest_filter=TSDBTest.BasicInstantiation]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[TSDBTest.BasicInstantiation]=]  PROPERTIES WORKING_DIRECTORY /home/shivansh/Desktop/Time-series-data-store/build SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
-set(  tsdb_tests_TESTS DataPointTest.SizeAndAlignment TimeSeriesTest.BasicInstantiation TSDBTest.BasicInstantiation)
