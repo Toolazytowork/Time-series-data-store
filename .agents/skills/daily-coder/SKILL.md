@@ -16,5 +16,5 @@ Whenever the user asks you to "execute the next task" or invokes this skill, you
    - *Self-Correction Loop:* If compilation fails or tests fail, you must fix the C++ code and re-run step 6 until all tests pass. Do not proceed to step 7 until tests are green.
 7. **Commit:** Stage the modified files, write a clear, conventional commit message detailing the architectural changes, and push the branch to origin.
 8. **Pull Request:** Use your GitHub MCP tool to open a Pull Request. Title it clearly (e.g., "Day X: [Task Name]"). Include a bulleted summary of the implementation details and how it adheres to `ARCHITECTURE.md`.
-9. **Update State:** Check off the specific `[ ]` box to an `[x]` in `ROADMAP.md` and commit/push that single change directly to the current branch.
+9. **Update State:** Check off the specific `[ ]` box to an `[x]` in `ROADMAP.md`. **DO NOT** stage, commit, or push this file to GitHub. This file must remain a local-only progress tracker to keep the remote repository clean.
 10. **Report:** Output a concise message to the user summarizing what was built, confirming tests passed, and providing the PR link.
