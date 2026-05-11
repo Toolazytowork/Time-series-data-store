@@ -14,9 +14,11 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
+add_library(tsdb_core src/TSDB.cpp)
+target_include_directories(tsdb_core PUBLIC src)
+
 add_executable(tsdb_tests tests/test_basic.cpp)
-target_include_directories(tsdb_tests PRIVATE src)
-target_link_libraries(tsdb_tests gtest_main)
+target_link_libraries(tsdb_tests tsdb_core gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(tsdb_tests)
