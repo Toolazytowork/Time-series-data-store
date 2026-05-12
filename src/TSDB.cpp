@@ -1,5 +1,6 @@
 #include "TSDB.h"
 #include <functional>
+#include <mutex>
 
 size_t TSDB::get_shard_idx(const std::string& metric_name) const {
     return std::hash<std::string>{}(metric_name) % NUM_SHARDS;
@@ -7,9 +8,10 @@ size_t TSDB::get_shard_idx(const std::string& metric_name) const {
 
 void TSDB::insert(const std::string& metric_name, int64_t timestamp, double value) {
     size_t idx = get_shard_idx(metric_name);
-    auto& store = shards_[idx].store;
+    auto& shard = shards_[idx];
 
-    auto& ts = store[metric_name];
+    std::unique_lock<std::shared_mutex> lock(shard.mutex);
+    auto& ts = shard.store[metric_name];
     if (ts.metric_name.empty()) {
         ts.metric_name = metric_name;
     }
@@ -18,10 +20,11 @@ void TSDB::insert(const std::string& metric_name, int64_t timestamp, double valu
 
 std::vector<DataPoint> TSDB::query(const std::string& metric_name) const {
     size_t idx = get_shard_idx(metric_name);
-    const auto& store = shards_[idx].store;
+    const auto& shard = shards_[idx];
 
-    auto it = store.find(metric_name);
-    if (it != store.end()) {
+    std::shared_lock<std::shared_mutex> lock(shard.mutex);
+    auto it = shard.store.find(metric_name);
+    if (it != shard.store.end()) {
         return it->second.data;
     }
     return {};

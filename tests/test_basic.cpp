@@ -35,3 +35,29 @@ TEST(TSDBTest, InsertionAndQuery) {
     auto empty_result = db.query("mem.usage");
     EXPECT_TRUE(empty_result.empty());
 }
+
+#include <thread>
+
+TEST(TSDBTest, ConcurrentInsertAndQuery) {
+    TSDB db;
+    const int num_threads = 10;
+    const int num_inserts = 1000;
+    std::vector<std::thread> threads;
+
+    for (int i = 0; i < num_threads; ++i) {
+        threads.emplace_back([&db, i, num_inserts]() {
+            for (int j = 0; j < num_inserts; ++j) {
+                db.insert("metric_" + std::to_string(i), j, j * 1.5);
+            }
+        });
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    for (int i = 0; i < num_threads; ++i) {
+        auto result = db.query("metric_" + std::to_string(i));
+        EXPECT_EQ(result.size(), num_inserts);
+    }
+}

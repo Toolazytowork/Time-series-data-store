@@ -2,6 +2,7 @@
 #include <string>
 #include <unordered_map>
 #include <array>
+#include <shared_mutex>
 #include "TimeSeries.h"
 
 // Core in-memory storage engine mapping metric names to TimeSeries
@@ -21,6 +22,7 @@ private:
 
     struct Shard {
         std::unordered_map<std::string, TimeSeries> store;
+        mutable std::shared_mutex mutex;
     };
 
     std::array<Shard, NUM_SHARDS> shards_;
