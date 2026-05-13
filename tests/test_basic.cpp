@@ -61,3 +61,25 @@ TEST(TSDBTest, ConcurrentInsertAndQuery) {
         EXPECT_EQ(result.size(), num_inserts);
     }
 }
+
+TEST(TSDBTest, TagIndexing) {
+    TSDB db;
+    db.insert("cpu.usage.host1", 1000, 45.0, {{"host", "server1"}, {"region", "us-east"}});
+    db.insert("cpu.usage.host2", 1000, 50.0, {{"host", "server2"}, {"region", "us-east"}});
+    db.insert("mem.usage.host1", 1000, 80.0, {{"host", "server1"}, {"region", "us-west"}});
+
+    const auto& index = db.get_tag_index();
+    
+    auto us_east_metrics = index.get_metrics_by_tag("region", "us-east");
+    EXPECT_EQ(us_east_metrics.size(), 2);
+    EXPECT_TRUE(us_east_metrics.count("cpu.usage.host1"));
+    EXPECT_TRUE(us_east_metrics.count("cpu.usage.host2"));
+
+    auto server1_metrics = index.get_metrics_by_tag("host", "server1");
+    EXPECT_EQ(server1_metrics.size(), 2);
+    EXPECT_TRUE(server1_metrics.count("cpu.usage.host1"));
+    EXPECT_TRUE(server1_metrics.count("mem.usage.host1"));
+
+    auto unknown_metrics = index.get_metrics_by_tag("host", "server3");
+    EXPECT_TRUE(unknown_metrics.empty());
+}
