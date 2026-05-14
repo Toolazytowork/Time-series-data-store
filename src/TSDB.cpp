@@ -1,6 +1,7 @@
 #include "TSDB.h"
 #include <functional>
 #include <mutex>
+#include <algorithm>
 
 size_t TSDB::get_shard_idx(const std::string& metric_name) const {
     return std::hash<std::string>{}(metric_name) % NUM_SHARDS;
@@ -29,4 +30,62 @@ std::vector<DataPoint> TSDB::query(const std::string& metric_name) const {
         return it->second.data;
     }
     return {};
+}
+
+std::unordered_map<std::string, std::vector<DataPoint>> TSDB::query_complex(
+    const std::unordered_map<std::string, std::string>& tags,
+    int64_t start_time,
+    int64_t end_time) const {
+
+    std::unordered_map<std::string, std::vector<DataPoint>> result;
+    if (tags.empty()) return result;
+
+    // 1. Resolve tags using inverted index
+    std::vector<std::unordered_set<std::string>> sets;
+    for (const auto& [key, value] : tags) {
+        auto metrics = tag_index_.get_metrics_by_tag(key, value);
+        if (metrics.empty()) return result; // AND logic means if any tag returns empty, result is empty
+        sets.push_back(std::move(metrics));
+    }
+
+    // 2. Compute intersection (AND logic)
+    std::unordered_set<std::string> intersection = std::move(sets.front());
+    for (size_t i = 1; i < sets.size(); ++i) {
+        std::unordered_set<std::string> current_intersection;
+        for (const auto& metric : intersection) {
+            if (sets[i].count(metric)) {
+                current_intersection.insert(metric);
+            }
+        }
+        intersection = std::move(current_intersection);
+        if (intersection.empty()) return result;
+    }
+
+    // 3. For each metric in intersection, fetch points in time range
+    for (const auto& metric_name : intersection) {
+        size_t idx = get_shard_idx(metric_name);
+        const auto& shard = shards_[idx];
+
+        std::shared_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.store.find(metric_name);
+        if (it != shard.store.end()) {
+            const auto& data = it->second.data;
+            
+            auto start_it = std::lower_bound(data.begin(), data.end(), start_time,
+                [](const DataPoint& a, int64_t ts) {
+                    return a.timestamp < ts;
+                });
+            
+            auto end_it = std::upper_bound(start_it, data.end(), end_time,
+                [](int64_t ts, const DataPoint& a) {
+                    return ts < a.timestamp;
+                });
+
+            if (start_it != end_it) {
+                result[metric_name] = std::vector<DataPoint>(start_it, end_it);
+            }
+        }
+    }
+
+    return result;
 }

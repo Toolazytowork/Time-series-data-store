@@ -83,3 +83,38 @@ TEST(TSDBTest, TagIndexing) {
     auto unknown_metrics = index.get_metrics_by_tag("host", "server3");
     EXPECT_TRUE(unknown_metrics.empty());
 }
+
+TEST(TSDBTest, ComplexQuery) {
+    TSDB db;
+    // Insert some points
+    db.insert("cpu.usage.host1", 100, 45.0, {{"host", "server1"}, {"region", "us-east"}});
+    db.insert("cpu.usage.host1", 200, 46.0);
+    db.insert("cpu.usage.host1", 300, 47.0);
+
+    db.insert("cpu.usage.host2", 150, 50.0, {{"host", "server2"}, {"region", "us-east"}});
+    db.insert("cpu.usage.host2", 250, 51.0);
+
+    db.insert("mem.usage.host1", 100, 80.0, {{"host", "server1"}, {"region", "us-east"}});
+    db.insert("mem.usage.host1", 200, 81.0);
+
+    // Query: host=server1 AND region=us-east, time [150, 250]
+    std::unordered_map<std::string, std::string> tags = {{"host", "server1"}, {"region", "us-east"}};
+    auto results = db.query_complex(tags, 150, 250);
+
+    // Expecting cpu.usage.host1 and mem.usage.host1
+    EXPECT_EQ(results.size(), 2);
+    
+    ASSERT_TRUE(results.count("cpu.usage.host1"));
+    EXPECT_EQ(results["cpu.usage.host1"].size(), 1); // Only timestamp 200
+    EXPECT_EQ(results["cpu.usage.host1"][0].timestamp, 200);
+
+    ASSERT_TRUE(results.count("mem.usage.host1"));
+    EXPECT_EQ(results["mem.usage.host1"].size(), 1); // Only timestamp 200
+    EXPECT_EQ(results["mem.usage.host1"][0].timestamp, 200);
+
+    // Query: host=server2, time [100, 300]
+    auto results2 = db.query_complex({{"host", "server2"}}, 100, 300);
+    EXPECT_EQ(results2.size(), 1);
+    ASSERT_TRUE(results2.count("cpu.usage.host2"));
+    EXPECT_EQ(results2["cpu.usage.host2"].size(), 2);
+}
