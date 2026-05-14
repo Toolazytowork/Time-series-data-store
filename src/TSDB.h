@@ -18,6 +18,12 @@ public:
     // Retrieves all DataPoints for a given metric. Returns empty vector if not found.
     std::vector<DataPoint> query(const std::string& metric_name) const;
 
+    // Complex query: filters metrics by tags (AND logic), and returns data points within [start_time, end_time]
+    std::unordered_map<std::string, std::vector<DataPoint>> query_complex(
+        const std::unordered_map<std::string, std::string>& tags,
+        int64_t start_time,
+        int64_t end_time) const;
+
     const TagIndex& get_tag_index() const { return tag_index_; }
 
 private:
