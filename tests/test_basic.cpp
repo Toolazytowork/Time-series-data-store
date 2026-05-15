@@ -118,3 +118,30 @@ TEST(TSDBTest, ComplexQuery) {
     ASSERT_TRUE(results2.count("cpu.usage.host2"));
     EXPECT_EQ(results2["cpu.usage.host2"].size(), 2);
 }
+
+#include "WALWriter.h"
+#include <fstream>
+#include <cstdio>
+
+TEST(WALTest, AppendAndVerifySize) {
+    std::string filename = "test_wal.log";
+    std::remove(filename.c_str());
+
+    {
+        WALWriter wal(filename);
+        DataPoint dp1{1000, 45.5};
+        EXPECT_TRUE(wal.append("cpu", dp1));
+
+        DataPoint dp2{2000, 50.0};
+        EXPECT_TRUE(wal.append("mem", dp2));
+    }
+
+    // Verify file size
+    // cpu log: 2 + 3 ("cpu") + 8 + 8 = 21 bytes
+    // mem log: 2 + 3 ("mem") + 8 + 8 = 21 bytes
+    // total: 42 bytes
+    std::ifstream in(filename, std::ios::binary | std::ios::ate);
+    EXPECT_EQ(in.tellg(), 42);
+    
+    std::remove(filename.c_str());
+}
