@@ -1,49 +1,70 @@
 #include "WALWriter.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <stdexcept>
 #include <cstring>
-#include <vector>
 
-WALWriter::WALWriter(const std::string& file_path) {
-    // Open with O_WRONLY | O_CREAT | O_APPEND | O_DSYNC
-    fd_ = open(file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_DSYNC, 0644);
+WALWriter::WALWriter(const std::string& file_path, size_t file_size)
+    : file_size_(file_size), offset_(0) {
+    
+    // Open the file
+    fd_ = open(file_path.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd_ < 0) {
-        throw std::runtime_error("Failed to open WAL file: " + file_path);
+        throw std::runtime_error("Failed to open WAL file for mmap: " + file_path);
+    }
+
+    // Set file size to reserve space for the memory mapped region
+    if (ftruncate(fd_, file_size_) != 0) {
+        close(fd_);
+        throw std::runtime_error("Failed to ftruncate WAL file.");
+    }
+
+    // Map the region
+    mapped_region_ = static_cast<char*>(mmap(nullptr, file_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+    if (mapped_region_ == MAP_FAILED) {
+        close(fd_);
+        throw std::runtime_error("Failed to mmap WAL file.");
     }
 }
 
 WALWriter::~WALWriter() {
+    if (mapped_region_ != MAP_FAILED) {
+        msync(mapped_region_, file_size_, MS_SYNC);
+        munmap(mapped_region_, file_size_);
+    }
     if (fd_ >= 0) {
+        // Truncate to the actual bytes written to remove unused trailing zeros
+        ftruncate(fd_, offset_.load());
         close(fd_);
     }
 }
 
 bool WALWriter::append(const std::string& metric_name, const DataPoint& dp) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    // Binary format:
-    // [uint16_t name_len] [char[] name] [int64_t timestamp] [double value]
     uint16_t name_len = static_cast<uint16_t>(metric_name.size());
-    
-    // Calculate total buffer size
     size_t total_size = sizeof(uint16_t) + name_len + sizeof(int64_t) + sizeof(double);
-    std::vector<char> buf(total_size);
-    
-    size_t offset = 0;
-    std::memcpy(buf.data() + offset, &name_len, sizeof(uint16_t));
-    offset += sizeof(uint16_t);
-    
-    std::memcpy(buf.data() + offset, metric_name.data(), name_len);
-    offset += name_len;
-    
-    std::memcpy(buf.data() + offset, &dp.timestamp, sizeof(int64_t));
-    offset += sizeof(int64_t);
-    
-    std::memcpy(buf.data() + offset, &dp.value, sizeof(double));
-    offset += sizeof(double);
-    
-    ssize_t written = write(fd_, buf.data(), total_size);
-    
-    return written == static_cast<ssize_t>(total_size);
+
+    // Lock-free atomic offset allocation
+    size_t current_offset = offset_.fetch_add(total_size, std::memory_order_relaxed);
+
+    if (current_offset + total_size > file_size_) {
+        // Exceeded mapped region, basic implementation fails out
+        return false; 
+    }
+
+    char* dest = mapped_region_ + current_offset;
+
+    std::memcpy(dest, &name_len, sizeof(uint16_t));
+    dest += sizeof(uint16_t);
+
+    std::memcpy(dest, metric_name.data(), name_len);
+    dest += name_len;
+
+    std::memcpy(dest, &dp.timestamp, sizeof(int64_t));
+    dest += sizeof(int64_t);
+
+    std::memcpy(dest, &dp.value, sizeof(double));
+
+    return true;
 }
