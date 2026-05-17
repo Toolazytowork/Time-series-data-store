@@ -14,7 +14,7 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
-add_library(tsdb_core src/TSDB.cpp src/WALWriter.cpp)
+add_library(tsdb_core src/TSDB.cpp src/WALWriter.cpp src/WALReader.cpp)
 target_include_directories(tsdb_core PUBLIC src)
 
 add_executable(tsdb_tests tests/test_basic.cpp)

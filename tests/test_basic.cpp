@@ -145,3 +145,36 @@ TEST(WALTest, AppendAndVerifySize) {
     
     std::remove(filename.c_str());
 }
+
+#include "WALReader.h"
+
+TEST(WALTest, CrashRecovery) {
+    std::string filename = "test_crash_recovery.log";
+    std::remove(filename.c_str());
+
+    {
+        // Simulate a running TSDB that writes to WAL
+        WALWriter wal(filename); // allocates 64MB memory map
+        DataPoint dp1{100, 1.1};
+        wal.append("metric.a", dp1);
+        DataPoint dp2{200, 2.2};
+        wal.append("metric.b", dp2);
+        
+        // We simulate a hard crash by reading the file while it is still open 
+        // and full of trailing zeros, before the WALWriter destructor truncates it.
+        TSDB db_recovered;
+        size_t recovered = WALReader::recover(filename, db_recovered);
+        
+        EXPECT_EQ(recovered, 2);
+        
+        auto res_a = db_recovered.query("metric.a");
+        ASSERT_EQ(res_a.size(), 1);
+        EXPECT_EQ(res_a[0].timestamp, 100);
+        EXPECT_EQ(res_a[0].value, 1.1);
+
+        auto res_b = db_recovered.query("metric.b");
+        ASSERT_EQ(res_b.size(), 1);
+    } // WALWriter destructor cleanly truncates file length here
+
+    std::remove(filename.c_str());
+}
