@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <array>
 #include <shared_mutex>
+#include <functional>
 #include "TimeSeries.h"
 #include "TagIndex.h"
 
@@ -23,6 +24,9 @@ public:
         const std::unordered_map<std::string, std::string>& tags,
         int64_t start_time,
         int64_t end_time) const;
+
+    // Executes a callback for every DataPoint in the database. Used for snapshotting.
+    void dump_all(const std::function<void(const std::string&, const DataPoint&)>& callback) const;
 
     const TagIndex& get_tag_index() const { return tag_index_; }
 

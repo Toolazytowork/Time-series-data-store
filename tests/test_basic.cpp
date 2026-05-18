@@ -178,3 +178,35 @@ TEST(WALTest, CrashRecovery) {
 
     std::remove(filename.c_str());
 }
+
+#include "WALManager.h"
+
+TEST(WALTest, Compaction) {
+    std::string filename = "test_compaction.log";
+    std::remove(filename.c_str());
+
+    {
+        TSDB db;
+        // Threshold = 2
+        WALManager manager(db, filename, 2);
+        
+        manager.insert("metric.x", 10, 1.0);
+        manager.insert("metric.x", 20, 2.0); // Threshold reached, compacts here!
+        manager.insert("metric.y", 30, 3.0);
+    }
+    
+    // Validate by reading the compacted WAL
+    TSDB db_recovered;
+    size_t recovered = WALReader::recover(filename, db_recovered);
+    
+    // We expect 3 points recovered because the compaction kept all active memory state
+    EXPECT_EQ(recovered, 3);
+    
+    auto res_x = db_recovered.query("metric.x");
+    EXPECT_EQ(res_x.size(), 2);
+    
+    auto res_y = db_recovered.query("metric.y");
+    EXPECT_EQ(res_y.size(), 1);
+
+    std::remove(filename.c_str());
+}
