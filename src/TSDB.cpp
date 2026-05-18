@@ -89,3 +89,15 @@ std::unordered_map<std::string, std::vector<DataPoint>> TSDB::query_complex(
 
     return result;
 }
+
+void TSDB::dump_all(const std::function<void(const std::string&, const DataPoint&)>& callback) const {
+    for (size_t i = 0; i < NUM_SHARDS; ++i) {
+        const auto& shard = shards_[i];
+        std::shared_lock<std::shared_mutex> lock(shard.mutex);
+        for (const auto& [metric_name, series] : shard.store) {
+            for (const auto& dp : series.data) {
+                callback(metric_name, dp);
+            }
+        }
+    }
+}

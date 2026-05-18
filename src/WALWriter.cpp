@@ -7,12 +7,19 @@
 #include <cstring>
 
 WALWriter::WALWriter(const std::string& file_path, size_t file_size)
-    : file_size_(file_size), offset_(0) {
+    : file_size_(file_size) {
     
     // Open the file
     fd_ = open(file_path.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd_ < 0) {
         throw std::runtime_error("Failed to open WAL file for mmap: " + file_path);
+    }
+
+    struct stat st;
+    if (fstat(fd_, &st) == 0 && st.st_size > 0) {
+        offset_.store(st.st_size);
+    } else {
+        offset_.store(0);
     }
 
     // Set file size to reserve space for the memory mapped region
