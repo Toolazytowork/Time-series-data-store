@@ -210,3 +210,22 @@ TEST(WALTest, Compaction) {
 
     std::remove(filename.c_str());
 }
+
+#include "BitStreamWriter.h"
+#include "BitStreamReader.h"
+
+TEST(BitStreamTest, WriteAndRead) {
+    BitStreamWriter writer;
+    writer.write_bit(true); // 1
+    writer.write_bit(false); // 0
+    writer.write_bits(0b1011, 4); // 1011
+    writer.write_bits(0xDEADBEEF, 32);
+
+    const auto& buffer = writer.get_buffer();
+    
+    BitStreamReader reader(buffer);
+    EXPECT_TRUE(reader.read_bit());
+    EXPECT_FALSE(reader.read_bit());
+    EXPECT_EQ(reader.read_bits(4), 0b1011);
+    EXPECT_EQ(reader.read_bits(32), 0xDEADBEEF);
+}
