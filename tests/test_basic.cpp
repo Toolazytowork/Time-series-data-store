@@ -229,3 +229,31 @@ TEST(BitStreamTest, WriteAndRead) {
     EXPECT_EQ(reader.read_bits(4), 0b1011);
     EXPECT_EQ(reader.read_bits(32), 0xDEADBEEF);
 }
+
+#include "GorillaTimestamp.h"
+
+TEST(GorillaTest, TimestampCompression) {
+    BitStreamWriter writer;
+    GorillaTimestampCompressor compressor(writer);
+
+    std::vector<int64_t> timestamps = {
+        1600000000, 
+        1600000060, // +60 (dod = 60)
+        1600000120, // +60 (dod = 0)
+        1600000179, // +59 (dod = -1)
+        1600000300, // +121 (dod = 62)
+        1600001000, // +700 (dod = 579)
+        1600005000  // +4000 (dod = 3300)
+    };
+
+    for (int64_t ts : timestamps) {
+        compressor.append(ts);
+    }
+
+    BitStreamReader reader(writer.get_buffer());
+    GorillaTimestampDecompressor decompressor(reader);
+
+    for (int64_t ts : timestamps) {
+        EXPECT_EQ(decompressor.read(), ts);
+    }
+}
