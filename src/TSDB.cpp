@@ -17,7 +17,7 @@ void TSDB::insert(const std::string& metric_name, int64_t timestamp, double valu
         ts.metric_name = metric_name;
         tag_index_.add_metric_tags(metric_name, tags);
     }
-    ts.data.push_back({timestamp, value});
+    ts.insert(timestamp, value);
 }
 
 std::vector<DataPoint> TSDB::query(const std::string& metric_name) const {
@@ -27,7 +27,7 @@ std::vector<DataPoint> TSDB::query(const std::string& metric_name) const {
     std::shared_lock<std::shared_mutex> lock(shard.mutex);
     auto it = shard.store.find(metric_name);
     if (it != shard.store.end()) {
-        return it->second.data;
+        return it->second.get_all_points();
     }
     return {};
 }
@@ -69,20 +69,9 @@ std::unordered_map<std::string, std::vector<DataPoint>> TSDB::query_complex(
         std::shared_lock<std::shared_mutex> lock(shard.mutex);
         auto it = shard.store.find(metric_name);
         if (it != shard.store.end()) {
-            const auto& data = it->second.data;
-            
-            auto start_it = std::lower_bound(data.begin(), data.end(), start_time,
-                [](const DataPoint& a, int64_t ts) {
-                    return a.timestamp < ts;
-                });
-            
-            auto end_it = std::upper_bound(start_it, data.end(), end_time,
-                [](int64_t ts, const DataPoint& a) {
-                    return ts < a.timestamp;
-                });
-
-            if (start_it != end_it) {
-                result[metric_name] = std::vector<DataPoint>(start_it, end_it);
+            std::vector<DataPoint> data = it->second.get_points_in_range(start_time, end_time);
+            if (!data.empty()) {
+                result[metric_name] = std::move(data);
             }
         }
     }
@@ -95,7 +84,7 @@ void TSDB::dump_all(const std::function<void(const std::string&, const DataPoint
         const auto& shard = shards_[i];
         std::shared_lock<std::shared_mutex> lock(shard.mutex);
         for (const auto& [metric_name, series] : shard.store) {
-            for (const auto& dp : series.data) {
+            for (const auto& dp : series.get_all_points()) {
                 callback(metric_name, dp);
             }
         }

@@ -11,7 +11,7 @@ TEST(DataPointTest, SizeAndAlignment) {
 TEST(TimeSeriesTest, BasicInstantiation) {
     TimeSeries ts;
     ts.metric_name = "cpu.usage";
-    EXPECT_EQ(ts.data.size(), 0);
+    EXPECT_EQ(ts.get_all_points().size(), 0);
 }
 
 TEST(TSDBTest, BasicInstantiation) {
@@ -255,5 +255,57 @@ TEST(GorillaTest, TimestampCompression) {
 
     for (int64_t ts : timestamps) {
         EXPECT_EQ(decompressor.read(), ts);
+    }
+}
+
+#include "GorillaValueCompressor.h"
+#include "GorillaValueDecompressor.h"
+#include "GorillaCompressor.h"
+
+TEST(GorillaTest, ValueCompression) {
+    BitStreamWriter writer;
+    GorillaValueCompressor compressor(writer);
+
+    std::vector<double> values = {
+        10.5, 
+        10.5, // XOR = 0
+        11.5, // new window
+        11.5, // XOR = 0
+        12.0, // new window
+        12.0, // XOR = 0
+        99.99
+    };
+
+    for (double val : values) {
+        compressor.append(val);
+    }
+
+    BitStreamReader reader(writer.get_buffer());
+    GorillaValueDecompressor decompressor(reader);
+
+    for (double val : values) {
+        EXPECT_DOUBLE_EQ(decompressor.read(), val);
+    }
+}
+
+TEST(GorillaTest, BlockCompressionAndIntegration) {
+    std::vector<DataPoint> points = {
+        {1600000000, 10.5},
+        {1600000060, 10.5},
+        {1600000120, 11.5},
+        {1600000180, 12.0},
+        {1600000240, 12.0}
+    };
+
+    auto block = GorillaCompressor::compress(points);
+    EXPECT_EQ(block.count, 5);
+    EXPECT_EQ(block.min_timestamp, 1600000000);
+    EXPECT_EQ(block.max_timestamp, 1600000240);
+
+    auto decompressed = GorillaCompressor::decompress(block);
+    ASSERT_EQ(decompressed.size(), 5);
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(decompressed[i].timestamp, points[i].timestamp);
+        EXPECT_DOUBLE_EQ(decompressed[i].value, points[i].value);
     }
 }
