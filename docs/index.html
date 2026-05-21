@@ -1045,181 +1045,133 @@ uint64_t read_bits(uint32_t num_bits);</code></pre>
                     
                     <div id="questionsContainer" style="max-height: 480px; overflow-y: auto; padding-right: 0.5rem;">
                         
-                        <div class="accordion" data-tags="gorilla compression delta xor">
+                        <div class="accordion" data-tags="introduction problem motivation telemetry performance throughput">
                             <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q1: Can you explain the detailed bit-layout and implementation of the Gorilla float value compression?</span>
+                                <span class="accordion-question">Q1: How would you introduce the problem you were trying to solve and the motivation behind it?</span>
                                 <span class="accordion-icon">+</span>
                             </div>
                             <div class="accordion-content">
                                 <div class="accordion-inner">
                                     <div class="transcript-bubble interviewer">
                                         <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">In your resume, you mention Gorilla floating-point compression. Walk me through the exact bitwise algorithm. How do you handle leading and trailing zero bits?</div>
+                                        <div class="bubble-text">Welcome! Let's talk about your high-performance time-series database. To start, how would you introduce the problem you were trying to solve and the motivation behind it?</div>
                                     </div>
                                     <div class="transcript-bubble candidate">
                                         <div class="bubble-label">Candidate</div>
                                         <div class="bubble-text">
-                                            Double-precision floats (64-bit) are first bit-cast to <code>uint64_t</code>. We compute the XOR of the current value with the previous value. If the XOR is <code>0</code>, we write a single <code>0</code> bit to indicate no change.
+                                            In high-velocity monitoring environments (e.g. cloud telemetry, IoT streams), traditional databases bottleneck on write paths, disk-seek latencies, and high memory footprints. I designed an in-memory Time-Series Database (TSDB) in C++17 optimized for mechanical sympathy. 
                                             <br><br>
-                                            If the XOR is non-zero, we write a <code>1</code> bit. We then evaluate whether the leading and trailing zeros fall inside the active window of the previous XOR calculation. If they do, we write a <code>0</code> control bit followed by the meaningful bits inside that existing window. 
-                                            <br><br>
-                                            If the leading/trailing zeros do not fit in the previous window, we write a <code>1</code> control bit, followed by a 5-bit block representing the number of leading zeros (capped at 31), a 6-bit block representing the length of the meaningful bits (meaningful length - 1), and then write the meaningful bits.
+                                            By using cache-aligned structures, lock-striped sharding, memory-mapped write-ahead logging (WAL), and Gorilla bitwise compression, we achieved a peak write throughput of <strong>191,000+ writes/sec</strong> and read throughput of <strong>189,000+ reads/sec</strong> on commodity hardware. Additionally, Gorilla compression compressed steady telemetries down to <strong>0.27 bytes/point</strong> (a 91% average memory reduction).
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="accordion" data-tags="cache alignment false sharing performance">
+                        <div class="accordion" data-tags="concurrency sharding false sharing alignment lock contention">
                             <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q2: What is false sharing, and how did aligning your shard structures to 64 bytes improve p99 tail latency?</span>
+                                <span class="accordion-question">Q2: Why choose sharded locking over a global lock or lock-free map, and how does false sharing affect it?</span>
                                 <span class="accordion-icon">+</span>
                             </div>
                             <div class="accordion-content">
                                 <div class="accordion-inner">
                                     <div class="transcript-bubble interviewer">
                                         <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">You aligned the Shard structure to 64 bytes. What is the physical memory rationale behind this, and how does it prevent latency spikes?</div>
+                                        <div class="bubble-text">You mentioned write throughput and concurrent access. Why did you choose sharded locking with 16 independent mutexes over a global lock or a completely lock-free concurrent hash map? And how does cache line false sharing impact this sharding?</div>
                                     </div>
                                     <div class="transcript-bubble candidate">
                                         <div class="bubble-label">Candidate</div>
                                         <div class="bubble-text">
-                                            False sharing occurs when independent variables accessed by different threads sit inside the same cache line (typically 64 bytes on modern CPUs). In our initial layout, the <code>std::array&lt;Shard, 16&gt;</code> layout placed shard locks contiguously. When thread A acquired a unique lock on Shard 0, it invalidated the cache line containing Shard 1, forcing Thread B on Shard 1 to reload its cache line from main memory, inducing a latency spike.
+                                            A global lock causes severe lock contention under concurrent load. A fully lock-free concurrent map avoids locks but makes range queries and multi-point transactions extremely complex to coordinate. I implemented a striped, sharded locking design (16 shards protected by <code>std::shared_mutex</code>), hashing metric names to distribute locks.
                                             <br><br>
-                                            By applying <code>alignas(64)</code> to the <code>Shard</code> struct, we guarantee that each shard structure resides on a separate, dedicated cache line. This physical isolation reduced write p99 latency from **23µs to 17µs** (a **26% performance improvement**) under peak concurrent write workloads.
+                                            However, placing shards contiguously in a <code>std::array</code> leads to false sharing since adjacent locks reside on the same 64-byte L1 cache line. When Thread A acquires a lock on Shard 0, it invalidates the cache line on Thread B's core accessing Shard 1. To resolve this, I applied <code>alignas(64)</code> to the <code>Shard</code> structure. Under stress tests, this cache line alignment optimization reduced p99 write latency by <strong>26%</strong> (from 23µs to 17µs).
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="accordion" data-tags="mmap wal durability atomic crash recovery">
+                        <div class="accordion" data-tags="durability wal mmap crash recovery zero-copy">
                             <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q3: How does the custom mmap-based Write-Ahead Log (WAL) achieve zero-copy durability and lock-free append?</span>
+                                <span class="accordion-question">Q3: How does the custom mmap WAL avoid disk write latency, and how does crash recovery perform?</span>
                                 <span class="accordion-icon">+</span>
                             </div>
                             <div class="accordion-content">
                                 <div class="accordion-inner">
                                     <div class="transcript-bubble interviewer">
                                         <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">How does your mmap WAL function without write-lock contention, and how did you verify the crash recovery time of under 0.74 seconds?</div>
+                                        <div class="bubble-text">Speaking of durability, you built a custom WAL using memory-mapped files (mmap). Explain how this append-only logger avoids disk write latency during write bursts, and how your crash recovery performs.</div>
                                     </div>
                                     <div class="transcript-bubble candidate">
                                         <div class="bubble-label">Candidate</div>
                                         <div class="bubble-text">
-                                            Traditional file I/O requires buffer copies from user space to kernel page cache. Our <code>WALWriter</code> opens the file and calls <code>mmap</code> to map a fixed 64MB window directly into the process's virtual address space.
+                                            Traditional file writing uses the <code>write()</code> syscall, introducing page cache copy overhead and CPU context switches. Our WAL maps the log file directly into the virtual memory space using <code>mmap</code>, reducing writes to zero-copy pointer operations (<code>std::memcpy</code>).
                                             <br><br>
-                                            To support concurrent appending, we use an atomic write boundary pointer (<code>std::atomic&lt;size_t&gt; offset_</code>). When a writer thread inserts a record, it executes a lock-free <code>fetch_add(total_size, std::memory_order_relaxed)</code>. This reserves a contiguous destination offset in virtual memory. The thread then copies the payload using a zero-copy <code>std::memcpy</code> to the mapped address without holding any global lock.
-                                            <br><br>
-                                            For crash recovery, the <code>WALReader::recover</code> parses the raw mmap buffer in-place on startup. Since it only processes linear binary structs directly from RAM mapped file bytes, we achieved recovery of **1,000,000 un-flushed data points in 734 milliseconds**!
+                                            To avoid lock contention on the log pointer, we use an atomic offset counter (<code>std::atomic&lt;size_t&gt; offset_</code>). Concurrent threads execute a lock-free <code>fetch_add</code> to claim their slice of mapped buffer and write their data without lock contention. During startup, the database scans the mmap space linearly in-place. Because data is stored in native binary representation, it recovers <strong>1,000,000 data points in only 734 milliseconds</strong> (under 0.74 seconds).
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="accordion" data-tags="inverted index tags complex query">
+                        <div class="accordion" data-tags="gorilla compression delta-of-delta xor value timestamp">
                             <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q4: How does the TagIndex perform fast multi-tag intersection queries?</span>
+                                <span class="accordion-question">Q4: What is the exact bit-layout of Gorilla Delta-of-Delta timestamps and float XOR values?</span>
                                 <span class="accordion-icon">+</span>
                             </div>
                             <div class="accordion-content">
                                 <div class="accordion-inner">
                                     <div class="transcript-bubble interviewer">
                                         <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">Describe the data structures of the inverted index. How do you evaluate a complex filter like tags: {host=server_0, env=production}?</div>
+                                        <div class="bubble-text">Fascinating. Let's talk compression. You implemented the Gorilla compression algorithm. Can you explain the exact bit-layout details of the Delta-of-Delta for timestamps and XOR for floating point values? What compression rates did you achieve?</div>
                                     </div>
                                     <div class="transcript-bubble candidate">
                                         <div class="bubble-label">Candidate</div>
                                         <div class="bubble-text">
-                                            The <code>TagIndex</code> class stores an internal <code>std::unordered_map&lt;std::string, std::unordered_set&lt;std::string&gt;&gt;</code>. The key represents the serialized representation of tag-key and tag-value pairs: <code>key:value</code>. The value is a set of metric names matching that tag.
-                                            <br><br>
-                                            When query_complex is called with multiple tags, we fetch the set of metrics for the first tag. For subsequent tags, we look up their matching metric sets and compute the intersection of sets. This narrows the candidate list to only those metrics that satisfy all filters before executing range queries on individual time-series vectors.
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion" data-tags="gorilla compression timestamp delta-of-delta">
-                            <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q5: Can you explain the detailed bit-layout and logic of the Gorilla Delta-of-Delta timestamp compression?</span>
-                                <span class="accordion-icon">+</span>
-                            </div>
-                            <div class="accordion-content">
-                                <div class="accordion-inner">
-                                    <div class="transcript-bubble interviewer">
-                                        <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">How exactly does the Delta-of-Delta encoding represent time offsets with variable-length bits, and what are the specific control bit flags?</div>
-                                    </div>
-                                    <div class="transcript-bubble candidate">
-                                        <div class="bubble-label">Candidate</div>
-                                        <div class="bubble-text">
-                                            For a series of timestamps, we calculate the first-order delta D_i = T_i - T_{i-1}, and then the second-order delta-of-delta D = D_i - D_{i-1}.
-                                            <br><br>
-                                            We encode D using the following bit control prefixes:
+                                            For timestamps, we calculate the second-order delta-of-delta D = (T_i - T_{i-1}) - (T_{i-1} - T_{i-2}). We output:
                                             <ul>
-                                                <li>If D = 0, we write a single <code>0</code> bit. This is extremely efficient for constant-interval sampling (e.g., every 10s).</li>
-                                                <li>If D is between -63 and 64, we write control bits <code>10</code> followed by 7 bits of value.</li>
-                                                <li>If D is between -255 and 256, we write control bits <code>110</code> followed by 9 bits of value.</li>
-                                                <li>If D is between -2047 and 2048, we write control bits <code>1110</code> followed by 12 bits of value.</li>
-                                                <li>Otherwise, we write control bits <code>1111</code> followed by a fallback 32-bit or 64-bit integer representation.</li>
+                                                <li>D = 0 &rarr; bit <code>0</code>.</li>
+                                                <li>D &in; [-63, 64] &rarr; control bits <code>10</code> + 7 bits payload.</li>
+                                                <li>D &in; [-255, 256] &rarr; control bits <code>110</code> + 9 bits payload.</li>
+                                                <li>D &in; [-2047, 2048] &rarr; control bits <code>1110</code> + 12 bits payload.</li>
+                                                <li>Otherwise &rarr; control bits <code>1111</code> + 32/64 bits payload.</li>
                                             </ul>
-                                            This compression allows us to store periodic timestamps in as little as 1 bit per sample.
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion" data-tags="motivation metrics performance throughput latency">
-                            <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q6: What were the key motivation, problems, and peak performance metrics achieved by this TSDB?</span>
-                                <span class="accordion-icon">+</span>
-                            </div>
-                            <div class="accordion-content">
-                                <div class="accordion-inner">
-                                    <div class="transcript-bubble interviewer">
-                                        <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">What motivated this project, what telemetry bottlenecks did you design for, and what are the final verified throughput numbers?</div>
-                                    </div>
-                                    <div class="transcript-bubble candidate">
-                                        <div class="bubble-label">Candidate</div>
-                                        <div class="bubble-text">
-                                            Modern telemetry architectures handle millions of points/sec. Standard RDBMS/NoSQL databases bottleneck on locking contention and heavy disk write paths. This engine was built in C++17 to achieve high write throughput, crash-durability, and minimum memory footprints.
-                                            <br><br>
-                                            Our final performance metrics under stress testing are:
+                                            For floating-point values, we XOR with the previous value X = V_i &oplus; V_{i-1}:
                                             <ul>
-                                                <li>**Peak Write Throughput:** 191,000+ writes/sec with a p99 latency of 74µs.</li>
-                                                <li>**Peak Read Throughput:** 189,000+ reads/sec with a p99 latency of 33µs.</li>
-                                                <li>**WAL Recovery speed:** Restores 1,000,000 data points in 734 milliseconds from an mmap-mapped buffer on startup.</li>
-                                                <li>**Gorilla Compression Engine:** Compresses steady metrics down to 0.27 bytes/point, yielding an average memory footprint reduction of **91%**.</li>
+                                                <li>X = 0 &rarr; bit <code>0</code>.</li>
+                                                <li>X &ne; 0 &rarr; bit <code>1</code>:
+                                                    <ul>
+                                                        <li><em>Window Reuse (bit 0):</em> If leading/trailing zeros fall inside the previous XOR window &rarr; write <code>0</code> + payload bits.</li>
+                                                        <li><em>New Window (bit 1):</em> Write <code>1</code> + 5 bits leading zero count + 6 bits meaningful length + meaningful bits.</li>
+                                                    </ul>
+                                                </li>
                                             </ul>
+                                            This achieves <strong>0.27 bytes/point</strong> on steady telemetry (98.3% compression) and averages <strong>91% footprint reduction</strong> across varied dynamic loads.
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="accordion" data-tags="scalability optimization simd tiering ring-buffer future">
+                        <div class="accordion" data-tags="scalability optimization simd storage tiering lock-free ring-buffer">
                             <div class="accordion-header" onclick="toggleAccordion(this)">
-                                <span class="accordion-question">Q7: What are the next architectural steps to scale this database to higher loads?</span>
+                                <span class="accordion-question">Q5: What are the next architectural steps to scale this database to higher loads?</span>
                                 <span class="accordion-icon">+</span>
                             </div>
                             <div class="accordion-content">
                                 <div class="accordion-inner">
                                     <div class="transcript-bubble interviewer">
                                         <div class="bubble-label">Interviewer</div>
-                                        <div class="bubble-text">Assuming this DB handles production load, how would you evolve the architecture to handle higher volumes and further optimize queries?</div>
+                                        <div class="bubble-text">Those are very solid engineering trade-offs. To wrap up our architectural discussion, what would be your next optimization steps if you had more time to scale this storage engine?</div>
                                     </div>
                                     <div class="transcript-bubble candidate">
                                         <div class="bubble-label">Candidate</div>
                                         <div class="bubble-text">
-                                            I would focus on three major scaling vectors:
+                                            If given more time, I would focus on these optimizations:
                                             <ol>
-                                                <li>**Vectorized SIMD Processing:** Leverage compiler intrinsic optimizations (AVX-512) to compress/decompress streams and execute TagIndex queries over vector lanes in parallel.</li>
-                                                <li>**Tiered Storage:** Archiving historical <code>CompressedBlock</code> payloads to SSD-backed SSTables or cloud-based Parquet files (S3) once they exceed a certain age threshold.</li>
-                                                <li>**Lock-Free Ingestion Buffers:** Placing a multi-producer, single-consumer ring buffer in front of each lock-striped Shard. Writers would enqueue points asynchronously, letting a dedicated thread update the shard state in batches to completely remove locks from the critical ingestion path.</li>
+                                                <li><strong>SIMD Vectorization:</strong> Leverage AVX-512 vector lanes to compress/decompress streams and execute index tag lookups in parallel.</li>
+                                                <li><strong>Tiered Storage Architecture:</strong> Flush inactive historically compressed blocks to persistent SSD-backed SSTables or cloud cold storage (e.g. Amazon S3) as Parquet columnar format files.</li>
+                                                <li><strong>Lock-Free Ingestion Queues:</strong> Introduce multi-producer, single-consumer ring buffers in front of each shard. Writers would enqueue points asynchronously, eliminating lock acquisition delays on the critical write path.</li>
                                             </ol>
                                         </div>
                                     </div>
