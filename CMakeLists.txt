@@ -22,3 +22,7 @@ target_link_libraries(tsdb_tests tsdb_core gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(tsdb_tests)
+
+add_executable(tsdb_benchmark tests/benchmark.cpp)
+target_link_libraries(tsdb_benchmark tsdb_core)
+
