@@ -1141,6 +1141,92 @@ uint64_t read_bits(uint32_t num_bits);</code></pre>
                             </div>
                         </div>
 
+                        <div class="accordion" data-tags="gorilla compression timestamp delta-of-delta">
+                            <div class="accordion-header" onclick="toggleAccordion(this)">
+                                <span class="accordion-question">Q5: Can you explain the detailed bit-layout and logic of the Gorilla Delta-of-Delta timestamp compression?</span>
+                                <span class="accordion-icon">+</span>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="accordion-inner">
+                                    <div class="transcript-bubble interviewer">
+                                        <div class="bubble-label">Interviewer</div>
+                                        <div class="bubble-text">How exactly does the Delta-of-Delta encoding represent time offsets with variable-length bits, and what are the specific control bit flags?</div>
+                                    </div>
+                                    <div class="transcript-bubble candidate">
+                                        <div class="bubble-label">Candidate</div>
+                                        <div class="bubble-text">
+                                            For a series of timestamps, we calculate the first-order delta D_i = T_i - T_{i-1}, and then the second-order delta-of-delta D = D_i - D_{i-1}.
+                                            <br><br>
+                                            We encode D using the following bit control prefixes:
+                                            <ul>
+                                                <li>If D = 0, we write a single <code>0</code> bit. This is extremely efficient for constant-interval sampling (e.g., every 10s).</li>
+                                                <li>If D is between -63 and 64, we write control bits <code>10</code> followed by 7 bits of value.</li>
+                                                <li>If D is between -255 and 256, we write control bits <code>110</code> followed by 9 bits of value.</li>
+                                                <li>If D is between -2047 and 2048, we write control bits <code>1110</code> followed by 12 bits of value.</li>
+                                                <li>Otherwise, we write control bits <code>1111</code> followed by a fallback 32-bit or 64-bit integer representation.</li>
+                                            </ul>
+                                            This compression allows us to store periodic timestamps in as little as 1 bit per sample.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion" data-tags="motivation metrics performance throughput latency">
+                            <div class="accordion-header" onclick="toggleAccordion(this)">
+                                <span class="accordion-question">Q6: What were the key motivation, problems, and peak performance metrics achieved by this TSDB?</span>
+                                <span class="accordion-icon">+</span>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="accordion-inner">
+                                    <div class="transcript-bubble interviewer">
+                                        <div class="bubble-label">Interviewer</div>
+                                        <div class="bubble-text">What motivated this project, what telemetry bottlenecks did you design for, and what are the final verified throughput numbers?</div>
+                                    </div>
+                                    <div class="transcript-bubble candidate">
+                                        <div class="bubble-label">Candidate</div>
+                                        <div class="bubble-text">
+                                            Modern telemetry architectures handle millions of points/sec. Standard RDBMS/NoSQL databases bottleneck on locking contention and heavy disk write paths. This engine was built in C++17 to achieve high write throughput, crash-durability, and minimum memory footprints.
+                                            <br><br>
+                                            Our final performance metrics under stress testing are:
+                                            <ul>
+                                                <li>**Peak Write Throughput:** 191,000+ writes/sec with a p99 latency of 74µs.</li>
+                                                <li>**Peak Read Throughput:** 189,000+ reads/sec with a p99 latency of 33µs.</li>
+                                                <li>**WAL Recovery speed:** Restores 1,000,000 data points in 734 milliseconds from an mmap-mapped buffer on startup.</li>
+                                                <li>**Gorilla Compression Engine:** Compresses steady metrics down to 0.27 bytes/point, yielding an average memory footprint reduction of **91%**.</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion" data-tags="scalability optimization simd tiering ring-buffer future">
+                            <div class="accordion-header" onclick="toggleAccordion(this)">
+                                <span class="accordion-question">Q7: What are the next architectural steps to scale this database to higher loads?</span>
+                                <span class="accordion-icon">+</span>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="accordion-inner">
+                                    <div class="transcript-bubble interviewer">
+                                        <div class="bubble-label">Interviewer</div>
+                                        <div class="bubble-text">Assuming this DB handles production load, how would you evolve the architecture to handle higher volumes and further optimize queries?</div>
+                                    </div>
+                                    <div class="transcript-bubble candidate">
+                                        <div class="bubble-label">Candidate</div>
+                                        <div class="bubble-text">
+                                            I would focus on three major scaling vectors:
+                                            <ol>
+                                                <li>**Vectorized SIMD Processing:** Leverage compiler intrinsic optimizations (AVX-512) to compress/decompress streams and execute TagIndex queries over vector lanes in parallel.</li>
+                                                <li>**Tiered Storage:** Archiving historical <code>CompressedBlock</code> payloads to SSD-backed SSTables or cloud-based Parquet files (S3) once they exceed a certain age threshold.</li>
+                                                <li>**Lock-Free Ingestion Buffers:** Placing a multi-producer, single-consumer ring buffer in front of each lock-striped Shard. Writers would enqueue points asynchronously, letting a dedicated thread update the shard state in batches to completely remove locks from the critical ingestion path.</li>
+                                            </ol>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
