@@ -33,7 +33,7 @@ public:
 private:
     static constexpr size_t NUM_SHARDS = 16;
 
-    struct Shard {
+    struct alignas(64) Shard {
         std::unordered_map<std::string, TimeSeries> store;
         mutable std::shared_mutex mutex;
     };
