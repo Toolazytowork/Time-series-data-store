@@ -14,7 +14,7 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
-add_library(tsdb_core src/TSDB.cpp src/WALWriter.cpp src/WALReader.cpp src/WALCompactor.cpp src/BitStreamWriter.cpp src/BitStreamReader.cpp src/GorillaTimestamp.cpp)
+add_library(tsdb_core src/TSDB.cpp src/WALWriter.cpp src/WALReader.cpp src/WALCompactor.cpp src/BitStreamWriter.cpp src/BitStreamReader.cpp src/GorillaTimestamp.cpp src/GorillaValueCompressor.cpp src/GorillaValueDecompressor.cpp src/GorillaCompressor.cpp)
 target_include_directories(tsdb_core PUBLIC src)
 
 add_executable(tsdb_tests tests/test_basic.cpp)
