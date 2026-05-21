@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Performance TSDB: Architecture, Codeflow & Mock Interview Guide</title>
+    <meta name="description" content="A comprehensive guide to the High-Performance C++17 Time-Series Database, including codeflow, components, and deep-dive senior engineer mock interviews.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-base: #0B0F19;
+            --bg-surface: #111827;
+            --bg-surface-hover: #1F2937;
+            --color-primary: #3B82F6;
+            --color-primary-glow: rgba(59, 130, 246, 0.15);
+            --color-success: #10B981;
+            --color-success-glow: rgba(16, 185, 129, 0.15);
+            --color-warn: #F59E0B;
+            --color-text-main: #F3F4F6;
+            --color-text-muted: #9CA3AF;
+            --border-color: #374151;
+            --font-display: 'Outfit', sans-serif;
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'Fira Code', monospace;
+            --transition-speed: 0.3s;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--color-text-main);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        header {
+            position: relative;
+            background: linear-gradient(180deg, rgba(17, 24, 39, 0.9) 0%, rgba(11, 15, 25, 0.9) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--color-primary-glow) 0%, transparent 60%);
+            z-index: 1;
+            pointer-events: none;
+            animation: rotateGlow 20s linear infinite;
+        }
+
+        @keyframes rotateGlow {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 2;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 2.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #FFF 30%, var(--color-primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.025em;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--color-text-muted);
+            max-width: 800px;
+            margin: 0 auto 1.5rem;
+        }
+
+        .tech-tags {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            padding: 0.35rem 0.85rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--color-text-main);
+            transition: all var(--transition-speed);
+        }
+
+        .tag:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 10px var(--color-primary-glow);
+        }
+
+        /* Navigation Tabs */
+        .tabs-container {
+            max-width: 1200px;
+            margin: 2rem auto 0;
+            display: flex;
+            justify-content: center;
+            border-bottom: 1px solid var(--border-color);
+            position: relative;
+            z-index: 2;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--color-text-muted);
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 1rem 2rem;
+            cursor: pointer;
+            transition: all var(--transition-speed);
+            position: relative;
+        }
+
+        .tab-btn:hover {
+            color: var(--color-text-main);
+        }
+
+        .tab-btn.active {
+            color: var(--color-primary);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: var(--color-primary);
+            box-shadow: 0 0 8px var(--color-primary);
+        }
+
+        /* Main Container */
+        main {
+            max-width: 1200px;
+            margin: 2.5rem auto;
+            padding: 0 1.5rem;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.4s ease-in-out forwards;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cards and Layouts */
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-left: 4px solid var(--color-primary);
+            padding-left: 0.75rem;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+
+        @media (min-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.75rem;
+            transition: all var(--transition-speed);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(59, 130, 246, 0.4);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .card-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .badge-core { background-color: var(--color-primary-glow); color: var(--color-primary); }
+        .badge-durability { background-color: var(--color-warn-glow); color: var(--color-warn); }
+        .badge-compression { background-color: var(--color-success-glow); color: var(--color-success); }
+
+        .card p {
+            color: var(--color-text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1.25rem;
+        }
+
+        /* Code Block Styling */
+        pre {
+            background-color: #080B11;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: #E5E7EB;
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        code {
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 0.15rem 0.35rem;
+            border-radius: 4px;
+            color: #E2E8F0;
+        }
+
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: inherit;
+        }
+
+        /* Flow Diagrams */
+        .flow-container {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .flow-step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative;
+        }
+
+        .flow-step-list::before {
+            content: '';
+            position: absolute;
+            top: 1.5rem;
+            bottom: 1.5rem;
+            left: 20px;
+            width: 2px;
+            background-color: var(--border-color);
+            z-index: 1;
+        }
+
+        .flow-step {
+            display: flex;
+            gap: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step-number {
+            background-color: var(--bg-surface-hover);
+            border: 2px solid var(--border-color);
+            color: var(--color-text-main);
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+            transition: all var(--transition-speed);
+        }
+
+        .flow-step:hover .step-number {
+            border-color: var(--color-primary);
+            background-color: var(--color-primary);
+            box-shadow: 0 0 10px var(--color-primary-glow);
+        }
+
+        .step-content {
+            background-color: var(--bg-surface-hover);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem;
+            flex-grow: 1;
+        }
+
+        .step-title {
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: var(--color-text-main);
+        }
+
+        .step-desc {
+            color: var(--color-text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Interview Simulator Accordions */
+        .interview-search-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 8px;
+            color: var(--color-text-main);
+            font-family: var(--font-sans);
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+            outline: none;
+            transition: all var(--transition-speed);
+        }
+
+        .interview-search-bar:focus {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 10px var(--color-primary-glow);
+        }
+
+        .accordion {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: all var(--transition-speed);
+        }
+
+        .accordion-header {
+            padding: 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color var(--transition-speed);
+        }
+
+        .accordion-header:hover {
+            background-color: var(--bg-surface-hover);
+        }
+
+        .accordion-question {
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--color-text-main);
+            padding-right: 1.5rem;
+        }
+
+        .accordion-icon {
+            font-size: 1.25rem;
+            color: var(--color-text-muted);
+            transition: transform var(--transition-speed);
+        }
+
+        .accordion.open .accordion-icon {
+            transform: rotate(45deg);
+            color: var(--color-primary);
+        }
+
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0, 1, 0, 1);
+            background-color: #0C111D;
+            border-top: 1px solid transparent;
+        }
+
+        .accordion.open .accordion-content {
+            max-height: 10000px; /* high value for expansion */
+            border-top: 1px solid var(--border-color);
+        }
+
+        .accordion-inner {
+            padding: 1.5rem;
+        }
+
+        .transcript-bubble {
+            margin-bottom: 1.5rem;
+            border-left: 3px solid var(--color-text-muted);
+            padding-left: 1rem;
+        }
+
+        .transcript-bubble.interviewer {
+            border-color: var(--color-warn);
+        }
+
+        .transcript-bubble.candidate {
+            border-color: var(--color-success);
+        }
+
+        .bubble-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .interviewer .bubble-label { color: var(--color-warn); }
+        .candidate .bubble-label { color: var(--color-success); }
+
+        .bubble-text {
+            font-size: 0.95rem;
+            color: var(--color-text-main);
+        }
+
+        /* Floating Glow Accents */
+        .accent-glow {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        .glow-1 {
+            top: 20%;
+            right: 10%;
+            width: 300px;
+            height: 300px;
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        .glow-2 {
+            bottom: 10%;
+            left: 5%;
+            width: 400px;
+            height: 400px;
+            background-color: rgba(16, 185, 129, 0.04);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="accent-glow glow-1"></div>
+    <div class="accent-glow glow-2"></div>
+
+    <header>
+        <div class="header-content">
+            <h1>High-Performance TSDB</h1>
+            <p class="subtitle">Complete Architectural Guide, Codeflow Diagnostics & Senior Software Engineer Interview Prep</p>
+            <div class="tech-tags">
+                <span class="tag">C++17</span>
+                <span class="tag">Gorilla Compression</span>
+                <span class="tag">Lock-Free atomic WAL</span>
+                <span class="tag">mmap Durability</span>
+                <span class="tag">Mechanical Sympathy</span>
+                <span class="tag">Lock-Striping</span>
+            </div>
+        </div>
+        
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="switchTab('codeflow')">System Codeflow</button>
+            <button class="tab-btn" onclick="switchTab('components')">Component Architecture</button>
+            <button class="tab-btn" onclick="switchTab('file-explainer')">File Explainer</button>
+            <button class="tab-btn" onclick="switchTab('interview')">SE Interview Simulator</button>
+        </div>
+    </header>
+
+    <main>
+        
+        <!-- Tab 1: System Codeflow -->
+        <section id="codeflow" class="tab-content active">
+            <div class="flow-container">
+                <h2 class="section-title">End-to-End Write Flow</h2>
+                <p style="color: var(--color-text-muted); margin-bottom: 1.5rem;">
+                    Follow the path of a write request as it guarantees durability via disk journaling and is sharded into the in-memory time-series index.
+                </p>
+                <div class="flow-step-list">
+                    <div class="flow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Client Entry Point</h3>
+                            <p class="step-desc">The application invokes <code>WALManager::insert(metric_name, timestamp, value, tags)</code>. The <code>WALManager</code> orchestrates the transaction between disk durability and thread-safe in-memory cache.</p>
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Atomic Memory-Mapped Append</h3>
+                            <p class="step-desc">Before RAM insertion, <code>WALWriter::append()</code> is executed. It allocates serialized buffer chunks on the disk-backed virtual memory boundary using a lock-free <code>std::atomic<size_t> offset_</code> offset increment. The data is written directly to the memory-mapped boundary (<code>mmap</code>).</p>
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Database Core Routing & Shard Locking</h3>
+                            <p class="step-desc">Control is returned to <code>TSDB::insert()</code>. The metric name is hashed (<code>std::hash</code>) and mapped to one of the 16 independent <code>Shard</code> buckets to minimize lock contention. An exclusive lock is acquired using <code>std::unique_lock<std::shared_mutex></code>.</p>
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Active Buffer Accumulation</h3>
+                            <p class="step-desc">The point is inserted into the specific <code>TimeSeries::active_block</code> buffer. The structure uses cache line alignment (<code>alignas(16)</code>) and tight packaging to minimize cache misses.</p>
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Gorilla Compressor Packing</h3>
+                            <p class="step-desc">Once the active vector exceeds the 1000-point threshold, it is packed on-the-fly. The <code>GorillaCompressor</code> serializes the block: timestamps are compressed using Delta-of-Delta variable-length framing; double-precision values are bit-cast to <code>uint64_t</code> and packed using XOR-based leading/trailing zero tracking. The compressed block is appended to the historical <code>CompressedBlock</code> array, and the active buffer is cleared.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-container">
+                <h2 class="section-title">End-to-End Query Flow</h2>
+                <div class="flow-step-list">
+                    <div class="flow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Index Lookup & Lock Acquisition</h3>
+                            <p class="step-desc">The query enters <code>TSDB::query(metric_name)</code>. It hashes the metric name, identifies the shard, and acquires a <code>std::shared_lock<std::shared_mutex></code> allowing concurrent read access without blocking other readers.</p>
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Selective Range Reconstruction</h3>
+                            <p class="step-desc">Under `query_complex`, the database uses the <code>TagIndex</code> (inverted key-value tag index) to compute the Boolean intersection of all matching metrics in O(1) time. For each target metric, only historical blocks overlapping the query range are loaded.</p>
+                        </div>
+                    </div>
+                    <div class="flow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3 class="step-title">Streaming Decompressor</h3>
+                            <p class="step-desc">The selected blocks are run through <code>GorillaCompressor::decompress</code>. <code>GorillaTimestampDecompressor</code> and <code>GorillaValueDecompressor</code> stream bit sequences from the shared <code>BitStreamReader</code>, reconstituting raw vectors of data points with negligible overhead.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 2: Component Architecture -->
+        <section id="components" class="tab-content">
+            <h2 class="section-title">Engine Component Catalog</h2>
+            <div class="grid-2">
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">TSDB & Sharded Index</h3>
+                        <span class="card-badge badge-core">Core</span>
+                    </div>
+                    <p>Handles the primary sharded layout. Leverages 16 independent <code>Shard</code> buckets aligned at 64 bytes (<code>alignas(64)</code>) to prevent cache false sharing. Implements thread-safe index lookup and read/write striping.</p>
+                    <pre><code>// Core Shard Alignment in TSDB.h
+struct alignas(64) Shard {
+    std::unordered_map&lt;std::string, TimeSeries&gt; store;
+    mutable std::shared_mutex mutex;
+};</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">TagIndex</h3>
+                        <span class="card-badge badge-core">Core</span>
+                    </div>
+                    <p>An inverted index structure mapping tag combinations (<code>key:value</code>) to lists of metrics. Written with read/write locks, it allows complex tag-based filtering using O(1) hash intersections.</p>
+                    <pre><code>// Inverted Index mapping tag_key:tag_value to metric names
+class TagIndex {
+    std::unordered_map&lt;std::string, std::unordered_set&lt;std::string&gt;&gt; index_;
+    mutable std::shared_mutex mutex_;
+};</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">WALWriter</h3>
+                        <span class="card-badge badge-durability">Durability</span>
+                    </div>
+                    <p>Leverages memory-mapped file boundaries (<code>mmap</code>). Serializes write operations in a lock-free design using atomic offset additions, eliminating context switches during file writes.</p>
+                    <pre><code>// Lock-free atomic offset allocation
+size_t current_offset = offset_.fetch_add(total_size, std::memory_order_relaxed);
+char* dest = mapped_region_ + current_offset;</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">WALCompactor</h3>
+                        <span class="card-badge badge-durability">Durability</span>
+                    </div>
+                    <p>Performs background log compaction. When WAL log file reaches the write threshold, it takes an atomic snapshot of memory structures, writes a consolidated state, and resets file offset to zero.</p>
+                    <pre><code>// Compaction flush logic
+WALCompactor::compact(db_, wal_path_);</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Gorilla Compressor</h3>
+                        <span class="card-badge badge-compression">Compression</span>
+                    </div>
+                    <p>Packs raw blocks of DataPoints into a binary payload. Utilizes <code>BitStreamWriter</code> to perform bitwise packing, implementing variable length Delta-of-Delta for timestamps and XOR tracking for values.</p>
+                    <pre><code>// Compress vectors of DataPoints
+auto block = GorillaCompressor::compress(active_block);</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">BitStream Utility</h3>
+                        <span class="card-badge badge-compression">Compression</span>
+                    </div>
+                    <p>Provides bit-level read and write primitives. Accumulates bits inside a 64-bit cache register before flushing bytes to memory buffer arrays, reducing byte-writing overhead.</p>
+                    <pre><code>// Bitwise writing interface
+void write_bits(uint64_t val, uint32_t num_bits);
+uint64_t read_bits(uint32_t num_bits);</code></pre>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Tab: File Explainer -->
+        <section id="file-explainer" class="tab-content">
+            <h2 class="section-title">Source Directory File Map</h2>
+            <p style="color: var(--color-text-muted); margin-bottom: 2rem;">
+                Detailed map of all files in the TSDB codebase, explaining their roles, internal layout, and primary function definitions.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                
+                <!-- Group 1: Core Database Sharding & Indexing -->
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                    <div style="background-color: var(--bg-surface-hover); padding: 1rem 1.25rem; font-weight: 700; border-bottom: 1px solid var(--border-color); font-family: var(--font-display);">
+                        📦 Core Storage Engine & Index
+                    </div>
+                    <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                        
+                        <div>
+                            <code style="font-size: 1rem; color: var(--color-primary);">src/DataPoint.h</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Defines the fundamental memory unit <code>DataPoint</code> with <code>alignas(16)</code>. Ensures cache line alignment.
+                            </p>
+                        </div>
+                        
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-primary);">src/TimeSeries.h</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Stores raw metrics in <code>active_block</code> (up to 1,000 points) and flushed <code>compressed_blocks</code> list. Uses <code>std::shared_mutex</code> for reader-writer concurrency control.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-primary);">src/TSDB.h / src/TSDB.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                <strong>Main Interface</strong>: Orchestrates sharded insertion and parallel lookups.
+                                <br>
+                                <code>void insert(metric_name, timestamp, value, tags)</code>: Hashes metric to one of the 16 independent <code>Shard</code> slots, locking only the local shard to maximize write throughput.
+                                <br>
+                                <code>std::vector&lt;DataPoint&gt; query(metric_name)</code>: Returns raw array values by merging historical compressed blocks with the active memory buffer.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-primary);">src/TagIndex.h</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                <strong>Inverted Multi-Tag Map</strong>: Handles tag matches.
+                                <br>
+                                <code>void add_metric_tags(metric_name, tags)</code>: Links tags to metric identifiers.
+                                <br>
+                                <code>std::unordered_set&lt;std::string&gt; query_by_tags(tags)</code>: Performs multi-key set intersection algorithms.
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Group 2: Durability & Write-Ahead Log -->
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                    <div style="background-color: var(--bg-surface-hover); padding: 1rem 1.25rem; font-weight: 700; border-bottom: 1px solid var(--border-color); font-family: var(--font-display);">
+                        💾 WAL & Disk Durability Subsystem
+                    </div>
+                    <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                        
+                        <div>
+                            <code style="font-size: 1rem; color: var(--color-warn);">src/WALWriter.h / src/WALWriter.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Maps file space directly to user space using virtual memory page allocation (<code>mmap</code>).
+                                <br>
+                                <code>void append(metric, datapoint)</code>: Writes data directly to the memory-mapped address via atomic offset tracking. Avoids locking when writing data chunks concurrently.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-warn);">src/WALReader.h / src/WALReader.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Log replay reader. Reads disk mappings linearly, validating data structures and calling <code>TSDB::insert()</code> to restore databases to pre-crash states.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-warn);">src/WALCompactor.h / src/WALCompactor.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                <strong>Log Truncator</strong>: Iterates through memory-flushed buffers to write consolidated checkpoints, resetting WAL file sizes and offsets to prevent disk bloat.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-warn);">src/WALManager.h</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                <strong>Highest-Level Coordinator</strong>: Handles WAL instantiation, recovery playback, write limits, and schedules asynchronous snapshot consolidation.
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Group 3: Gorilla Bitwise Compression -->
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                    <div style="background-color: var(--bg-surface-hover); padding: 1rem 1.25rem; font-weight: 700; border-bottom: 1px solid var(--border-color); font-family: var(--font-display);">
+                        ⚡ Gorilla Bit-Compression Engine
+                    </div>
+                    <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                        
+                        <div>
+                            <code style="font-size: 1rem; color: var(--color-success);">src/BitStreamWriter.h / src/BitStreamWriter.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Packs variable-length bit sequences. Leverages a 64-bit cache register to batch byte flushes and minimize target buffer writes.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-success);">src/BitStreamReader.h / src/BitStreamReader.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Unpacks bits. Reads precise bit chunks sequentially from compressed block segments.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-success);">src/GorillaTimestamp.h / src/GorillaTimestamp.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Implements Delta-of-Delta variable-length integer compression. Maps small delta-of-deltas to compact bit fields (e.g. <code>0</code>, <code>10</code>, <code>110</code>, <code>1110</code>, or <code>1111</code> control bits).
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-success);">src/GorillaValueCompressor.h / src/GorillaValueCompressor.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Double-precision XOR serializer. Packs 64-bit floats by reusing trailing and leading zero windows from previous values.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-success);">src/GorillaValueDecompressor.h / src/GorillaValueDecompressor.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                Restores raw double-precision floats by parsing XOR masks and shifting bit segments out of the stream.
+                            </p>
+                        </div>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            <code style="font-size: 1rem; color: var(--color-success);">src/GorillaCompressor.h / src/GorillaCompressor.cpp</code>
+                            <p style="margin-top: 0.25rem; font-size: 0.95rem; color: var(--color-text-muted);">
+                                High-level compressor wrapper. Integrates timestamp and value pipelines to compress vectors of DataPoints into self-contained <code>CompressedBlock</code> payloads.
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+
+        <!-- Tab 3: SE Interview Simulator -->
+        <section id="interview" class="tab-content">
+            <h2 class="section-title">Senior Software Engineer Mock Interview</h2>
+            <p style="color: var(--color-text-muted); margin-bottom: 2rem;">
+                This simulator showcases deep-dive technical questions and answers about this TSDB project. Use the search bar to filter specific topics.
+            </p>
+
+            <input type="text" id="interviewSearch" class="interview-search-bar" placeholder="Search questions (e.g. Gorilla, WAL, Cache)..." oninput="filterQuestions()">
+
+            <div id="questionsContainer">
+                
+                <div class="accordion" data-tags="gorilla compression delta xor">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span class="accordion-question">Q1: Can you explain the detailed bit-layout and implementation of the Gorilla float value compression?</span>
+                        <span class="accordion-icon">+</span>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="accordion-inner">
+                            <div class="transcript-bubble interviewer">
+                                <div class="bubble-label">Interviewer</div>
+                                <div class="bubble-text">In your resume, you mention Gorilla floating-point compression. Walk me through the exact bitwise algorithm. How do you handle leading and trailing zero bits?</div>
+                            </div>
+                            <div class="transcript-bubble candidate">
+                                <div class="bubble-label">Candidate</div>
+                                <div class="bubble-text">
+                                    Double-precision floats (64-bit) are first bit-cast to <code>uint64_t</code>. We compute the XOR of the current value with the previous value. If the XOR is <code>0</code>, we write a single <code>0</code> bit to indicate no change.
+                                    <br><br>
+                                    If the XOR is non-zero, we write a <code>1</code> bit. We then evaluate whether the leading and trailing zeros fall inside the active window of the previous XOR calculation. If they do, we write a <code>0</code> control bit followed by the meaningful bits inside that existing window. 
+                                    <br><br>
+                                    If the leading/trailing zeros do not fit in the previous window, we write a <code>1</code> control bit, followed by a 5-bit block representing the number of leading zeros (capped at 31), a 6-bit block representing the length of the meaningful bits (meaningful length - 1), and then write the meaningful bits.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion" data-tags="cache alignment false sharing performance">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span class="accordion-question">Q2: What is false sharing, and how did aligning your shard structures to 64 bytes improve p99 tail latency?</span>
+                        <span class="accordion-icon">+</span>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="accordion-inner">
+                            <div class="transcript-bubble interviewer">
+                                <div class="bubble-label">Interviewer</div>
+                                <div class="bubble-text">You aligned the Shard structure to 64 bytes. What is the physical memory rationale behind this, and how does it prevent latency spikes?</div>
+                            </div>
+                            <div class="transcript-bubble candidate">
+                                <div class="bubble-label">Candidate</div>
+                                <div class="bubble-text">
+                                    False sharing occurs when independent variables accessed by different threads sit inside the same cache line (typically 64 bytes on modern CPUs). In our initial layout, the <code>std::array&lt;Shard, 16&gt;</code> layout placed shard locks contiguously. When thread A acquired a unique lock on Shard 0, it invalidated the cache line containing Shard 1, forcing Thread B on Shard 1 to reload its cache line from main memory, inducing a latency spike.
+                                    <br><br>
+                                    By applying <code>alignas(64)</code> to the <code>Shard</code> struct, we guarantee that each shard structure resides on a separate, dedicated cache line. This physical isolation reduced write p99 latency from **23µs to 17µs** (a **26% performance improvement**) under peak concurrent write workloads.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion" data-tags="mmap wal durability atomic crash recovery">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span class="accordion-question">Q3: How does the custom mmap-based Write-Ahead Log (WAL) achieve zero-copy durability and lock-free append?</span>
+                        <span class="accordion-icon">+</span>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="accordion-inner">
+                            <div class="transcript-bubble interviewer">
+                                <div class="bubble-label">Interviewer</div>
+                                <div class="bubble-text">How does your mmap WAL function without write-lock contention, and how did you verify the crash recovery time of under 0.74 seconds?</div>
+                            </div>
+                            <div class="transcript-bubble candidate">
+                                <div class="bubble-label">Candidate</div>
+                                <div class="bubble-text">
+                                    Traditional file I/O requires buffer copies from user space to kernel page cache. Our <code>WALWriter</code> opens the file and calls <code>mmap</code> to map a fixed 64MB window directly into the process's virtual address space.
+                                    <br><br>
+                                    To support concurrent appending, we use an atomic write boundary pointer (<code>std::atomic&lt;size_t&gt; offset_</code>). When a writer thread inserts a record, it executes a lock-free <code>fetch_add(total_size, std::memory_order_relaxed)</code>. This reserves a contiguous destination offset in virtual memory. The thread then copies the payload using a zero-copy <code>std::memcpy</code> to the mapped address without holding any global lock.
+                                    <br><br>
+                                    For crash recovery, the <code>WALReader::recover</code> parses the raw mmap buffer in-place on startup. Since it only processes linear binary structs directly from RAM mapped file bytes, we achieved recovery of **1,000,000 un-flushed data points in 734 milliseconds**!
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion" data-tags="inverted index tags complex query">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <span class="accordion-question">Q4: How does the TagIndex perform fast multi-tag intersection queries?</span>
+                        <span class="accordion-icon">+</span>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="accordion-inner">
+                            <div class="transcript-bubble interviewer">
+                                <div class="bubble-label">Interviewer</div>
+                                <div class="bubble-text">Describe the data structures of the inverted index. How do you evaluate a complex filter like tags: {host=server_0, env=production}?</div>
+                            </div>
+                            <div class="transcript-bubble candidate">
+                                <div class="bubble-label">Candidate</div>
+                                <div class="bubble-text">
+                                    The <code>TagIndex</code> class stores an internal <code>std::unordered_map&lt;std::string, std::unordered_set&lt;std::string&gt;&gt;</code>. The key represents the serialized representation of tag-key and tag-value pairs: <code>key:value</code>. The value is a set of metric names matching that tag.
+                                    <br><br>
+                                    When query_complex is called with multiple tags, we fetch the set of metrics for the first tag. For subsequent tags, we look up their matching metric sets and compute the intersection of sets. This narrows the candidate list to only those metrics that satisfy all filters before executing range queries on individual time-series vectors.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        function switchTab(tabId) {
+            // Update active tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // Update active content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        function toggleAccordion(header) {
+            const accordion = header.parentElement;
+            accordion.classList.toggle('open');
+        }
+
+        function filterQuestions() {
+            const query = document.getElementById('interviewSearch').value.toLowerCase();
+            const accordions = document.querySelectorAll('.accordion');
+            
+            accordions.forEach(acc => {
+                const text = acc.querySelector('.accordion-question').textContent.toLowerCase();
+                const innerText = acc.querySelector('.accordion-inner').textContent.toLowerCase();
+                const tags = acc.getAttribute('data-tags').toLowerCase();
+                
+                if (text.includes(query) || innerText.includes(query) || tags.includes(query)) {
+                    acc.style.display = 'block';
+                } else {
+                    acc.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
